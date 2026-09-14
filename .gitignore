@@ -1,0 +1,4 @@
+node_modules/
+react-node-app/dist/
+.env
+npm-debug.log*

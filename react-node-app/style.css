@@ -1,0 +1,22 @@
+:root {
+  color-scheme: dark;
+  font-family: Georgia, 'Times New Roman', serif;
+  background: #101615;
+  color: #f4f0e7;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 80% 15%, #29453f 0, transparent 34rem), #101615;
+}
+
+.shell { width: min(680px, calc(100% - 3rem)); }
+.eyebrow { color: #b6c86b; font: 700 0.75rem/1.2 monospace; letter-spacing: 0.14em; }
+h1 { margin: 1rem 0; font-size: clamp(3rem, 9vw, 6.5rem); line-height: 0.9; font-weight: 400; }
+.lede { max-width: 32rem; color: #bfc8bf; font: 1.1rem/1.6 monospace; }
+.status { display: inline-block; margin-top: 2rem; padding: 0.8rem 1rem; border: 1px solid #b6c86b; color: #dce9a1; font: 700 0.85rem monospace; }
