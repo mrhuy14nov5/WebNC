@@ -1,4 +1,5 @@
 node_modules/
 react-node-app/dist/
 .env
+.data/
 npm-debug.log*

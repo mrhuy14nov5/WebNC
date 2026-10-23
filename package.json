@@ -5,14 +5,14 @@
   "description": "WebNC Node and MySQL development project",
   "main": "server.js",
   "scripts": {
-    "start": "node --env-file=.env server.js",
+    "start": "node --env-file-if-exists=.env server.js",
     "dev": "vite --host 0.0.0.0",
-    "dev:server": "node --env-file=.env --watch server.js",
+    "dev:server": "node --env-file-if-exists=.env server.js",
     "client": "npm run dev",
     "build": "vite build"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.4.1",

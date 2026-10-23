@@ -2,7 +2,7 @@ import axios from 'axios';
 
 /** Axios client configured for the NestJS API and httpOnly-cookie authentication. */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
   headers: {
     Accept: 'application/json',

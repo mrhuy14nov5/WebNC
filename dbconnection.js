@@ -2,12 +2,13 @@ const mysql = require('mysql2');
 
 const requiredVariables = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
 const missingVariables = requiredVariables.filter((name) => !process.env[name]);
+const configuredVariables = requiredVariables.filter((name) => process.env[name]);
 
-if (missingVariables.length > 0) {
-  throw new Error(`Missing database environment variables: ${missingVariables.join(', ')}`);
+if (configuredVariables.length > 0 && missingVariables.length > 0) {
+  throw new Error(`Incomplete MySQL configuration. Missing environment variables: ${missingVariables.join(', ')}`);
 }
 
-const database = mysql.createPool({
+const database = configuredVariables.length === 0 ? null : mysql.createPool({
   connectionLimit: 5,
   host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT),

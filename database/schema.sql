@@ -6,3 +6,24 @@ CREATE TABLE IF NOT EXISTS students (
   year TINYINT UNSIGNED NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS auth_users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL UNIQUE,
+  email VARCHAR(180) NOT NULL UNIQUE,
+  password_hash CHAR(128) NOT NULL,
+  password_salt CHAR(32) NOT NULL,
+  role VARCHAR(20) NOT NULL DEFAULT 'student',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_auth_users_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  token_hash CHAR(64) NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_auth_sessions_expiry (expires_at),
+  CONSTRAINT fk_auth_sessions_user FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+);

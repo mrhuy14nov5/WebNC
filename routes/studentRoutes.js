@@ -1,7 +1,9 @@
 const express = require('express');
 const controller = require('../controllers/studentController');
+const { requireAuth, requireRole } = require('../middleware/requireAuth');
 
 const router = express.Router();
+router.use(requireAuth, requireRole('admin'));
 router.get('/', controller.getStudents);
 router.get('/:id', controller.getStudent);
 router.post('/', controller.createStudent);
