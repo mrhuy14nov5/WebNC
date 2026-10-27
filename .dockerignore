@@ -1,0 +1,6 @@
+node_modules
+.data
+.git
+react-node-app/dist
+.env
+npm-debug.log*

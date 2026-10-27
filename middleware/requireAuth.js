@@ -1,4 +1,5 @@
 const authModel = require('../models/authModel');
+const { randomBytes, timingSafeEqual } = require('node:crypto');
 
 const cookieName = 'unimanage_session';
 
@@ -19,6 +20,28 @@ async function requireAuth(request, response, next) {
   return next();
 }
 
+function issueCsrfToken(_request, response) {
+  const token = randomBytes(32).toString('hex');
+  response.cookie('unimanage_csrf', token, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+  });
+  response.json({ csrfToken: token });
+}
+
+function requireCsrf(request, response, next) {
+  const cookie = request.headers.cookie?.split(';').map((part) => part.trim())
+    .find((part) => part.startsWith('unimanage_csrf='))?.slice('unimanage_csrf='.length);
+  const header = request.get('x-csrf-token');
+  if (!/^[a-f0-9]{64}$/.test(cookie || '') || !/^[a-f0-9]{64}$/.test(header || '') || cookie.length !== header.length
+    || !timingSafeEqual(Buffer.from(cookie), Buffer.from(header))) {
+    return response.status(403).json({ message: 'CSRF token không hợp lệ. Vui lòng tải lại trang.' });
+  }
+  return next();
+}
+
 function requireRole(role) {
   return (request, response, next) => {
     if (request.user?.role !== role) {
@@ -28,4 +51,4 @@ function requireRole(role) {
   };
 }
 
-module.exports = { cookieName, readSessionToken, requireAuth, requireRole };
+module.exports = { cookieName, readSessionToken, requireAuth, requireRole, issueCsrfToken, requireCsrf };

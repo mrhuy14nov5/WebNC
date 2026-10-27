@@ -1,21 +1,24 @@
-import { useState } from 'react';
-import { Alert, Button, Card, Col, Container, Row, Spinner } from 'react-bootstrap';
+import { useEffect, useState } from 'react';
+import { Alert, Button, Card, Col, Container, Row } from 'react-bootstrap';
 import { BookHalf, BoxArrowRight, Person } from 'react-bootstrap-icons';
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import Footer from '../components/Footer.jsx';
 import { useAuth } from '../services/AuthContext.jsx';
+import api from '../services/api.js';
 
 export default function DashboardPage() {
-  const { user, loading, error, logout } = useAuth();
+  const { user, error, logout } = useAuth();
   const navigate = useNavigate();
-  const { id } = useParams();
   const [logoutError, setLogoutError] = useState('');
+  const [registrations, setRegistrations] = useState([]);
+  const [courseError, setCourseError] = useState('');
 
-  if (loading) {
-    return <main className="auth-loading" aria-live="polite"><Spinner animation="border" role="status"><span className="visually-hidden">Đang tải tài khoản</span></Spinner></main>;
-  }
-  if (!user) return <Navigate to="/login" replace />;
+  useEffect(() => {
+    if (user?.role !== 'student') return;
+    api.get('/courses/mine').then(({ data }) => setRegistrations(data))
+      .catch(() => setCourseError('Không thể tải danh sách học phần đã đăng ký.'));
+  }, [user]);
 
   async function handleLogout() {
     setLogoutError('');
@@ -34,7 +37,6 @@ export default function DashboardPage() {
         <Container>
           {error && <Alert variant="warning">{error}</Alert>}
           {logoutError && <Alert variant="danger" role="alert">{logoutError}</Alert>}
-          {id && <Alert variant="info">Danh mục học phần chi tiết sẽ khả dụng khi có dữ liệu học phần trên backend.</Alert>}
           <div className="dashboard-heading">
             <div><span className="eyebrow">CỔNG THÔNG TIN SINH VIÊN</span><h1 className="destination-title">Xin chào, {user.name}</h1><p className="destination-subtitle">Thông tin tài khoản của bạn được tải từ máy chủ.</p></div>
             <Button variant="outline-secondary" onClick={handleLogout}><BoxArrowRight aria-hidden="true" className="me-2" />Đăng xuất</Button>
@@ -48,8 +50,8 @@ export default function DashboardPage() {
                   <dl className="profile-list">
                     <div><dt>Họ và tên</dt><dd>{user.name}</dd></div>
                     <div><dt>Email</dt><dd>{user.email}</dd></div>
-                    <div><dt>Ngành học</dt><dd>{user.major}</dd></div>
-                    <div><dt>Năm học</dt><dd>Năm {user.year}</dd></div>
+                    {user.role === 'student' && <><div><dt>Ngành học</dt><dd>{user.major}</dd></div><div><dt>Năm học</dt><dd>Năm {user.year}</dd></div></>}
+                    <div><dt>Vai trò</dt><dd>{user.role === 'admin' ? 'Quản trị viên' : user.role === 'lecturer' ? 'Giảng viên' : 'Sinh viên'}</dd></div>
                   </dl>
                 </Card.Body>
               </Card>
@@ -58,9 +60,7 @@ export default function DashboardPage() {
               <Card className="dashboard-card h-100">
                 <Card.Body>
                   <span className="role-icon"><BookHalf aria-hidden="true" /></span>
-                  <h2>Học phần</h2>
-                  <p>Tra cứu danh mục học phần demo hiện có. Dữ liệu học phần và đăng ký học phần chưa được lưu trong backend.</p>
-                  <Button as={Link} to="/search" variant="outline-primary">Khám phá học phần</Button>
+                  {user.role === 'admin' ? <><h2>Quản trị</h2><p>Quản lý hồ sơ sinh viên và tra cứu dữ liệu hệ thống.</p><Button as={Link} to="/admin/students" variant="outline-primary">Quản lý sinh viên</Button></> : <><h2>Học phần đã đăng ký</h2><p>{courseError || (registrations.length ? registrations.map((course) => `${course.code} · ${course.name}`).join(' — ') : 'Bạn chưa đăng ký học phần nào.')}</p><Button as={Link} to="/search" variant="outline-primary">Khám phá học phần</Button></>}
                 </Card.Body>
               </Card>
             </Col>

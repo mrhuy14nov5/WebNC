@@ -1,24 +1,28 @@
 const path = require('node:path');
 const express = require('express');
+const helmet = require('helmet');
 const database = require('./dbconnection');
 const studentRoutes = require('./routes/studentRoutes');
+const courseRoutes = require('./routes/courseRoutes');
 const authRoutes = require('./routes/authRoutes');
 const initializeDatabase = require('./database/init');
 const localStore = database ? null : require('./database/localStore');
+const authModel = require('./models/authModel');
+const { requireCsrf } = require('./middleware/requireAuth');
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const frontendPath = path.join(__dirname, 'react-node-app');
 
-app.use(express.json());
+app.use(helmet());
+app.use(express.json({ limit: '32kb' }));
+app.use('/api', (request, response, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return requireCsrf(request, response, next);
+  return next();
+});
 app.use('/api/auth', authRoutes);
-if (database) {
-  app.use('/api/students', studentRoutes);
-} else {
-  app.use('/api/students', (_request, response) => {
-    response.status(503).json({ message: 'API quản lý sinh viên cần cấu hình MySQL trong file .env.' });
-  });
-}
+app.use('/api/courses', courseRoutes);
+app.use('/api/students', studentRoutes);
 app.use(express.static(path.join(frontendPath, 'dist')));
 
 app.get('/api/health', (_request, response) => {
@@ -51,10 +55,21 @@ app.use((error, _request, response, _next) => {
 
 const initialize = database
   ? initializeDatabase()
-  : Promise.resolve().then(() => localStore.initialize());
+  : Promise.resolve().then(async () => {
+    localStore.initialize();
+    await authModel.seedAdmin();
+    const { database: sqlite } = localStore;
+    const seed = sqlite.prepare('INSERT OR IGNORE INTO courses (id, name, code, credits, lecturer, capacity, faculty, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const course of require('./database/courseSeed')) {
+      seed.run(course.id, course.name, course.code, course.credits, course.lecturer, course.capacity, course.faculty, course.description);
+    }
+  });
 
 initialize
   .then(() => app.listen(port, () => {
+    const cleanupTimer = setInterval(() => authModel.cleanupExpiredSessions().catch((error) => console.error('Session cleanup failed:', error.message)), 60 * 60 * 1000);
+    cleanupTimer.unref();
+    authModel.cleanupExpiredSessions().catch((error) => console.error('Session cleanup failed:', error.message));
     console.log(`WebNC is running at http://localhost:${port} (${database ? 'MySQL' : 'local SQLite'})`);
   }))
   .catch((error) => {

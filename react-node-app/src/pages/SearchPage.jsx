@@ -1,20 +1,25 @@
-import { useMemo } from 'react';
-import { Badge, Button, Card, Col, Container, Row } from 'react-bootstrap';
+import { useEffect, useState } from 'react';
+import { Alert, Badge, Button, Card, Col, Container, Row, Spinner } from 'react-bootstrap';
 import { ArrowLeft, People, Person } from 'react-bootstrap-icons';
 import { Link, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import Footer from '../components/Footer.jsx';
-import { courses } from '../data/mockData.js';
+import api from '../services/api.js';
 
-/** Displays locally-filtered demo course results for the hero search form. */
 export default function SearchPage() {
   const [searchParams] = useSearchParams();
   const query = searchParams.get('q')?.trim().toLocaleLowerCase('vi') ?? '';
   const faculty = searchParams.get('faculty') ?? '';
-  const results = useMemo(() => courses.filter((course) => {
-    const matchesQuery = !query || `${course.name} ${course.code} ${course.faculty}`.toLocaleLowerCase('vi').includes(query);
-    return matchesQuery && (!faculty || course.faculty === faculty);
-  }), [faculty, query]);
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    setLoading(true);
+    api.get('/courses', { params: { search: searchParams.get('q') || '', faculty: faculty === 'Tất cả' ? '' : faculty } })
+      .then(({ data }) => setResults(data))
+      .catch(() => setError('Không thể tải danh sách học phần. Vui lòng thử lại.'))
+      .finally(() => setLoading(false));
+  }, [faculty, searchParams]);
 
   return (
     <>
@@ -28,7 +33,8 @@ export default function SearchPage() {
             {query ? <>Từ khóa: <strong>{searchParams.get('q')}</strong></> : 'Các môn học đang mở đăng ký'}
             {faculty && <> · {faculty}</>}
           </p>
-          {results.length ? (
+          {error && <Alert variant="danger">{error}</Alert>}
+          {loading ? <div className="text-center p-5"><Spinner animation="border" role="status"><span className="visually-hidden">Đang tải học phần</span></Spinner></div> : results.length ? (
             <Row className="g-4">
               {results.map((course) => (
                 <Col sm={6} lg={4} key={course.id}>
@@ -47,7 +53,7 @@ export default function SearchPage() {
           ) : (
             <div className="empty-search"><h2>Chưa tìm thấy môn học phù hợp</h2><p>Thử từ khóa khác hoặc xem toàn bộ môn học đang mở đăng ký.</p><Button as={Link} to="/search">Xem tất cả môn học</Button></div>
           )}
-          <p className="demo-note mt-4">Kết quả được lấy từ dữ liệu mẫu trên giao diện.</p>
+          <p className="demo-note mt-4">Danh sách học phần được tải từ máy chủ.</p>
         </Container>
       </main>
       <Footer />

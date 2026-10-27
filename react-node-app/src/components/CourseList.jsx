@@ -1,15 +1,20 @@
-import { useState } from 'react';
-import { Badge, Button, Card, Col, Container, Row, ToggleButton } from 'react-bootstrap';
+import { useEffect, useState } from 'react';
+import { Alert, Badge, Button, Card, Col, Container, Row, ToggleButton } from 'react-bootstrap';
 import { ArrowRight, People, Person } from 'react-bootstrap-icons';
 import { Link } from 'react-router-dom';
 import { courses, faculties } from '../data/mockData.js';
+import api from '../services/api.js';
 
 /** Featured courses with faculty filters and responsive course cards. */
 export default function CourseList() {
   const [activeFaculty, setActiveFaculty] = useState('Tất cả');
-  const visibleCourses = activeFaculty === 'Tất cả'
-    ? courses
-    : courses.filter((course) => course.faculty === activeFaculty);
+  const [courseList, setCourseList] = useState([]);
+  const [courseError, setCourseError] = useState('');
+  useEffect(() => {
+    api.get('/courses').then(({ data }) => setCourseList(data))
+      .catch(() => { setCourseList(courses); setCourseError('Không tải được dữ liệu máy chủ; đang hiển thị dữ liệu tham khảo.'); });
+  }, []);
+  const visibleCourses = activeFaculty === 'Tất cả' ? courseList : courseList.filter((course) => course.faculty === activeFaculty);
 
   return (
     <section className="section-space courses-section" id="courses" aria-labelledby="courses-title">
@@ -35,6 +40,7 @@ export default function CourseList() {
             </ToggleButton>
           ))}
         </div>
+        {courseError && <Alert variant="warning">{courseError}</Alert>}
         <Row className="g-4">
           {visibleCourses.map((course) => (
             <Col sm={6} xl={3} key={course.id}>

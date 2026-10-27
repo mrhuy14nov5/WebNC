@@ -6,6 +6,17 @@ const localStore = database ? null : require('../database/localStore');
 const scryptAsync = promisify(scrypt);
 const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 
+function mysqlDateTime(date) {
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+function cleanupExpiredSessions() {
+  if (!database) {
+    return Promise.resolve(localStore.database.prepare('DELETE FROM auth_sessions WHERE expires_at <= ?').run(Date.now()));
+  }
+  return database.promise().execute('DELETE FROM auth_sessions WHERE expires_at <= UTC_TIMESTAMP()');
+}
+
 function hashToken(token) {
   return createHash('sha256').update(token).digest('hex');
 }
@@ -75,7 +86,7 @@ async function register({ name, email, major, year, password }) {
     );
     await connection.execute(
       'INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
-      [userResult.insertId, hashToken(token), expiresAt]
+      [userResult.insertId, hashToken(token), mysqlDateTime(expiresAt)]
     );
     await connection.commit();
     return { user: publicUser({ id: userResult.insertId, name, email, major, year, role: 'student' }), token };
@@ -103,6 +114,7 @@ async function login(email, password) {
     if (!account || !valid) return null;
 
     const token = randomBytes(32).toString('hex');
+    localDatabase.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(account.id);
     localDatabase.prepare(
       'INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)'
     ).run(account.id, hashToken(token), Date.now() + sessionLifetimeMs);
@@ -125,9 +137,10 @@ async function login(email, password) {
 
   const token = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + sessionLifetimeMs);
+  await database.promise().execute('DELETE FROM auth_sessions WHERE user_id = ?', [account.id]);
   await database.promise().execute(
     'INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
-    [account.id, hashToken(token), expiresAt]
+    [account.id, hashToken(token), mysqlDateTime(expiresAt)]
   );
   return { user: publicUser(account), token };
 }
@@ -149,10 +162,65 @@ async function findUserForSession(token) {
      FROM auth_sessions AS sessions
      JOIN auth_users AS users ON users.id = sessions.user_id
      JOIN students ON students.id = users.student_id
-     WHERE sessions.token_hash = ? AND sessions.expires_at > NOW()`,
+    WHERE sessions.token_hash = ? AND sessions.expires_at > UTC_TIMESTAMP()`,
     [hashToken(token)]
   );
   return rows[0] ? publicUser(rows[0]) : null;
+}
+
+async function seedAdmin() {
+  const email = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD || '';
+  if (!email && !password) return false;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 12 || password.length > 128) {
+    throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD (12–128 characters) are required to seed an administrator.');
+  }
+  const credentials = await hashPassword(password);
+  if (!database) {
+    const db = localStore.database;
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const current = db.prepare('SELECT id, student_id, role FROM auth_users WHERE email = ?').get(email);
+      if (current) {
+        if (current.role !== 'admin') {
+          db.prepare("UPDATE auth_users SET role = 'admin', password_hash = ?, password_salt = ? WHERE id = ?")
+            .run(credentials.hash, credentials.salt, current.id);
+          db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(current.id);
+        }
+        db.exec('COMMIT');
+        return true;
+      }
+      const student = db.prepare('INSERT INTO students (name, email, major, year) VALUES (?, ?, ?, ?)').run('Quản trị viên', email, 'Quản trị hệ thống', 1);
+      db.prepare("INSERT INTO auth_users (student_id, email, password_hash, password_salt, role) VALUES (?, ?, ?, ?, 'admin')")
+        .run(Number(student.lastInsertRowid), email, credentials.hash, credentials.salt);
+      db.exec('COMMIT');
+      return true;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  const existing = await database.promise().execute('SELECT id, role FROM auth_users WHERE email = ?', [email]);
+  if (existing[0][0]) {
+    if (existing[0][0].role !== 'admin') {
+      await database.promise().execute("UPDATE auth_users SET role = 'admin', password_hash = ?, password_salt = ? WHERE id = ?", [credentials.hash, credentials.salt, existing[0][0].id]);
+      await database.promise().execute('DELETE FROM auth_sessions WHERE user_id = ?', [existing[0][0].id]);
+    }
+    return true;
+  }
+  const connection = await database.promise().getConnection();
+  try {
+    await connection.beginTransaction();
+    const [student] = await connection.execute('INSERT INTO students (name, email, major, year) VALUES (?, ?, ?, ?)', ['Quản trị viên', email, 'Quản trị hệ thống', 1]);
+    await connection.execute("INSERT INTO auth_users (student_id, email, password_hash, password_salt, role) VALUES (?, ?, ?, ?, 'admin')", [student.insertId, email, credentials.hash, credentials.salt]);
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 function deleteSession(token) {
@@ -162,4 +230,4 @@ function deleteSession(token) {
   return database.promise().execute('DELETE FROM auth_sessions WHERE token_hash = ?', [hashToken(token)]);
 }
 
-module.exports = { register, login, findUserForSession, deleteSession };
+module.exports = { register, login, findUserForSession, deleteSession, cleanupExpiredSessions, seedAdmin };

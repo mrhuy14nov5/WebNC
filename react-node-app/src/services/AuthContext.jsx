@@ -13,7 +13,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    api.get('/auth/me')
+    api.get('/auth/csrf')
+      .then(() => api.get('/auth/me'))
       .then(({ data }) => setUser(data.user))
       .catch((requestError) => {
         if (requestError.response?.status !== 401) {
