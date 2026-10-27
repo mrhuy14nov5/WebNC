@@ -10,7 +10,8 @@
       "onAutoForward": "openBrowser"
     },
     "5173": {
-      "label": "React Vite frontend"
+      "label": "React Vite frontend",
+      "visibility": "public"
     }
   },
   "customizations": {
