@@ -5,12 +5,13 @@
   "description": "UniManage learning management app with Express, React, MySQL and SQLite support",
   "main": "server.js",
   "scripts": {
-    "start": "npm run build && node --env-file-if-exists=.env server.js",
-    "start:server": "node --env-file-if-exists=.env server.js",
+    "start": "npm run build && NODE_PATH=./react-node-app/node_modules node --env-file-if-exists=.env server.js",
+    "start:server": "NODE_PATH=./react-node-app/node_modules node --env-file-if-exists=.env server.js",
     "dev": "vite --host 0.0.0.0",
-    "dev:server": "node --env-file-if-exists=.env server.js",
+    "dev:server": "NODE_PATH=./react-node-app/node_modules node --env-file-if-exists=.env server.js",
     "client": "npm run dev",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "NODE_PATH=./react-node-app/node_modules node --test react-node-app/test/*.test.cjs"
   },
   "engines": {
     "node": ">=22.13"
@@ -18,10 +19,13 @@
   "dependencies": {
     "@vitejs/plugin-react": "^4.4.1",
     "axios": "^1.8.4",
+    "bcryptjs": "^3.0.3",
     "bootstrap": "^5.3.8",
+    "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.24.4",
     "react": "^18.3.1",
     "react-bootstrap": "^2.10.10",

@@ -1,6 +1,7 @@
 const path = require('node:path');
 const express = require('express');
 const helmet = require('helmet');
+const cors = require('cors');
 const database = require('./dbconnection');
 const studentRoutes = require('./routes/studentRoutes');
 const courseRoutes = require('./routes/courseRoutes');
@@ -13,8 +14,17 @@ const { requireCsrf } = require('./middleware/requireAuth');
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const frontendPath = path.join(__dirname, 'react-node-app');
+const allowedOrigins = new Set((process.env.CORS_ORIGINS
+  || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5173,http://127.0.0.1:5173'))
+  .split(',').map((origin) => origin.trim()).filter(Boolean));
 
 app.use(helmet());
+app.use(cors({
+  origin(origin, callback) {
+    callback(null, !origin || allowedOrigins.has(origin));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '32kb' }));
 app.use('/api', (request, response, next) => {
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return requireCsrf(request, response, next);
@@ -36,10 +46,7 @@ app.get('/api/health', (_request, response) => {
     }
   }
   database.query('SELECT 1 AS connected', (error) => {
-    if (error) {
-      return response.status(503).json({ status: 'degraded', database: 'unavailable' });
-    }
-
+    if (error) return response.status(503).json({ status: 'degraded', database: 'unavailable' });
     return response.json({ status: 'ok', database: 'connected' });
   });
 });
@@ -65,14 +72,18 @@ const initialize = database
     }
   });
 
-initialize
-  .then(() => app.listen(port, () => {
-    const cleanupTimer = setInterval(() => authModel.cleanupExpiredSessions().catch((error) => console.error('Session cleanup failed:', error.message)), 60 * 60 * 1000);
-    cleanupTimer.unref();
-    authModel.cleanupExpiredSessions().catch((error) => console.error('Session cleanup failed:', error.message));
-    console.log(`WebNC is running at http://localhost:${port} (${database ? 'MySQL' : 'local SQLite'})`);
-  }))
-  .catch((error) => {
-    console.error('Database initialization failed:', error.message);
-    process.exitCode = 1;
-  });
+if (require.main === module) {
+  initialize
+    .then(() => app.listen(port, () => {
+      const cleanupTimer = setInterval(() => authModel.cleanupExpiredSessions().catch((error) => console.error('Session cleanup failed:', error.message)), 60 * 60 * 1000);
+      cleanupTimer.unref();
+      authModel.cleanupExpiredSessions().catch((error) => console.error('Session cleanup failed:', error.message));
+      console.log(`WebNC is running at http://localhost:${port} (${database ? 'MySQL' : 'local SQLite'})`);
+    }))
+    .catch((error) => {
+      console.error('Database initialization failed:', error.message);
+      process.exitCode = 1;
+    });
+}
+
+module.exports = { app, initialize };

@@ -2,10 +2,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
-const dataDirectory = path.join(__dirname, '..', '.data');
-fs.mkdirSync(dataDirectory, { recursive: true });
+const databasePath = process.env.UNIMANAGE_SQLITE_PATH || path.join(__dirname, '..', '.data', 'unimanage.sqlite');
+if (databasePath !== ':memory:') fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 
-const database = new DatabaseSync(path.join(dataDirectory, 'unimanage.sqlite'));
+const database = new DatabaseSync(databasePath);
 database.exec('PRAGMA foreign_keys = ON');
 
 function initialize() {

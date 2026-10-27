@@ -60,4 +60,4 @@ async function deleteStudent(request, response) {
   response.status(204).send();
 }
 
-module.exports = { getStudents, getStudent, createStudent, updateStudent, deleteStudent };
+module.exports = { getStudents, getStudent, createStudent, updateStudent, deleteStudent, validateStudent };

@@ -83,4 +83,4 @@ async function logout(request, response) {
   return response.status(204).send();
 }
 
-module.exports = { register, login, currentUser, logout };
+module.exports = { register, login, currentUser, logout, validateCredentials };

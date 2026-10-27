@@ -1,10 +1,17 @@
 const { createHash, randomBytes, scrypt, timingSafeEqual } = require('node:crypto');
 const { promisify } = require('node:util');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const database = require('../dbconnection');
 const localStore = database ? null : require('../database/localStore');
 
 const scryptAsync = promisify(scrypt);
 const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1000;
+const sessionSecret = process.env.SESSION_SECRET
+  || (process.env.NODE_ENV === 'production' ? '' : randomBytes(32).toString('hex'));
+if (!sessionSecret || (process.env.NODE_ENV === 'production' && sessionSecret.length < 32)) {
+  throw new Error('A SESSION_SECRET with at least 32 characters is required in production.');
+}
 
 function mysqlDateTime(date) {
   return date.toISOString().slice(0, 19).replace('T', ' ');
@@ -21,16 +28,40 @@ function hashToken(token) {
   return createHash('sha256').update(token).digest('hex');
 }
 
-async function hashPassword(password, salt = randomBytes(16).toString('hex')) {
+async function hashLegacyPassword(password, salt) {
   const derivedKey = await scryptAsync(password, salt, 64);
-  return { hash: derivedKey.toString('hex'), salt };
+  return derivedKey.toString('hex');
+}
+
+async function hashPassword(password) {
+  return { hash: await bcrypt.hash(password, 12), salt: '' };
 }
 
 async function verifyPassword(password, storedHash, salt) {
-  const { hash } = await hashPassword(password, salt);
+  if (/^\$2[aby]\$/.test(storedHash)) return bcrypt.compare(password, storedHash);
+  const hash = await hashLegacyPassword(password, salt);
   const actual = Buffer.from(hash, 'hex');
   const expected = Buffer.from(storedHash, 'hex');
   return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+function createSessionToken(userId) {
+  return jwt.sign({ sub: String(userId), jti: randomBytes(16).toString('hex') }, sessionSecret, {
+    expiresIn: sessionLifetimeMs / 1000,
+  });
+}
+
+async function upgradePasswordHash(userId, password) {
+  const credentials = await hashPassword(password);
+  if (!database) {
+    localStore.database.prepare('UPDATE auth_users SET password_hash = ?, password_salt = ? WHERE id = ?')
+      .run(credentials.hash, credentials.salt, userId);
+    return;
+  }
+  await database.promise().execute(
+    'UPDATE auth_users SET password_hash = ?, password_salt = ? WHERE id = ?',
+    [credentials.hash, credentials.salt, userId]
+  );
 }
 
 function publicUser(row) {
@@ -46,7 +77,6 @@ function publicUser(row) {
 
 async function register({ name, email, major, year, password }) {
   const credentials = await hashPassword(password);
-  const token = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + sessionLifetimeMs);
 
   if (!database) {
@@ -59,6 +89,7 @@ async function register({ name, email, major, year, password }) {
       const userResult = localDatabase.prepare(
         'INSERT INTO auth_users (student_id, email, password_hash, password_salt) VALUES (?, ?, ?, ?)'
       ).run(Number(studentResult.lastInsertRowid), email, credentials.hash, credentials.salt);
+      const token = createSessionToken(Number(userResult.lastInsertRowid));
       localDatabase.prepare(
         'INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)'
       ).run(Number(userResult.lastInsertRowid), hashToken(token), expiresAt.getTime());
@@ -84,6 +115,7 @@ async function register({ name, email, major, year, password }) {
       'INSERT INTO auth_users (student_id, email, password_hash, password_salt) VALUES (?, ?, ?, ?)',
       [studentResult.insertId, email, credentials.hash, credentials.salt]
     );
+    const token = createSessionToken(userResult.insertId);
     await connection.execute(
       'INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
       [userResult.insertId, hashToken(token), mysqlDateTime(expiresAt)]
@@ -112,8 +144,9 @@ async function login(email, password) {
       ? await verifyPassword(password, account.password_hash, account.password_salt)
       : await verifyPassword(password, '0'.repeat(128), '0'.repeat(32));
     if (!account || !valid) return null;
+    if (!/^\$2[aby]\$/.test(account.password_hash)) await upgradePasswordHash(account.id, password);
 
-    const token = randomBytes(32).toString('hex');
+    const token = createSessionToken(account.id);
     localDatabase.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(account.id);
     localDatabase.prepare(
       'INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)'
@@ -134,8 +167,9 @@ async function login(email, password) {
     ? await verifyPassword(password, account.password_hash, account.password_salt)
     : await verifyPassword(password, '0'.repeat(128), '0'.repeat(32));
   if (!account || !valid) return null;
+  if (!/^\$2[aby]\$/.test(account.password_hash)) await upgradePasswordHash(account.id, password);
 
-  const token = randomBytes(32).toString('hex');
+  const token = createSessionToken(account.id);
   const expiresAt = new Date(Date.now() + sessionLifetimeMs);
   await database.promise().execute('DELETE FROM auth_sessions WHERE user_id = ?', [account.id]);
   await database.promise().execute(
@@ -146,6 +180,14 @@ async function login(email, password) {
 }
 
 async function findUserForSession(token) {
+  let payload;
+  try {
+    payload = jwt.verify(token, sessionSecret, { algorithms: ['HS256'] });
+  } catch {
+    return null;
+  }
+  if (!payload || typeof payload !== 'object' || !payload.sub) return null;
+
   if (!database) {
     const account = localStore.database.prepare(
       `SELECT users.id, users.role, students.name, students.email, students.major, students.year
@@ -154,7 +196,7 @@ async function findUserForSession(token) {
        JOIN students ON students.id = users.student_id
        WHERE sessions.token_hash = ? AND sessions.expires_at > ?`
     ).get(hashToken(token), Date.now());
-    return account ? publicUser(account) : null;
+    return account && String(account.id) === payload.sub ? publicUser(account) : null;
   }
 
   const [rows] = await database.promise().execute(
@@ -165,7 +207,7 @@ async function findUserForSession(token) {
     WHERE sessions.token_hash = ? AND sessions.expires_at > UTC_TIMESTAMP()`,
     [hashToken(token)]
   );
-  return rows[0] ? publicUser(rows[0]) : null;
+  return rows[0] && String(rows[0].id) === payload.sub ? publicUser(rows[0]) : null;
 }
 
 async function seedAdmin() {

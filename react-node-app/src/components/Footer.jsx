@@ -30,7 +30,7 @@ export default function Footer() {
             </ul>
           </Col>
         </Row>
-        <div className="footer-bottom"><span>© 2026 UniManage - Nhóm [tên nhóm] - Đại học Phenikaa. Phát hành theo giấy phép MIT.</span><span>Thiết kế cho cộng đồng Phenikaa</span></div>
+        <div className="footer-bottom"><span>© 2026 UniManage - Nhóm 2 - Đại học Phenikaa. Phát hành theo giấy phép MIT.</span><span>Thiết kế cho cộng đồng Phenikaa</span></div>
       </Container>
     </footer>
   );

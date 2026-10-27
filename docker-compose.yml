@@ -14,6 +14,8 @@ services:
       DB_SSL_CA: ${DB_SSL_CA:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
     ports:
       - "3000:3000"
     volumes:

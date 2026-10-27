@@ -31,6 +31,103 @@ function findCourse(id) {
   return database.promise().execute(query, [id]).then(([rows]) => rows[0]);
 }
 
+function createCourse(course) {
+  if (!database) {
+    localStore.database.prepare(
+      'INSERT INTO courses (id, name, code, credits, lecturer, capacity, faculty, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(course.id, course.name, course.code, course.credits, course.lecturer, course.capacity, course.faculty, course.description);
+    return findCourse(course.id);
+  }
+  return database.promise().execute(
+    'INSERT INTO courses (id, name, code, credits, lecturer, capacity, faculty, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [course.id, course.name, course.code, course.credits, course.lecturer, course.capacity, course.faculty, course.description]
+  ).then(() => findCourse(course.id));
+}
+
+async function updateCourse(id, course) {
+  if (!database) {
+    const db = localStore.database;
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const existing = db.prepare('SELECT id FROM courses WHERE id = ?').get(id);
+      if (!existing) {
+        db.exec('COMMIT');
+        return null;
+      }
+      const { total } = db.prepare('SELECT COUNT(*) AS total FROM course_registrations WHERE course_id = ?').get(id);
+      if (course.capacity < total) throw Object.assign(new Error('COURSE_CAPACITY_BELOW_ENROLLMENT'), { code: 'COURSE_CAPACITY_BELOW_ENROLLMENT' });
+      db.prepare(
+        'UPDATE courses SET name = ?, code = ?, credits = ?, lecturer = ?, capacity = ?, faculty = ?, description = ? WHERE id = ?'
+      ).run(course.name, course.code, course.credits, course.lecturer, course.capacity, course.faculty, course.description, id);
+      const updated = findCourse(id);
+      db.exec('COMMIT');
+      return updated;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  const connection = await database.promise().getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[existing]] = await connection.execute('SELECT id FROM courses WHERE id = ? FOR UPDATE', [id]);
+    if (!existing) {
+      await connection.commit();
+      return null;
+    }
+    const [[{ total }]] = await connection.execute('SELECT COUNT(*) AS total FROM course_registrations WHERE course_id = ?', [id]);
+    if (course.capacity < total) throw Object.assign(new Error('COURSE_CAPACITY_BELOW_ENROLLMENT'), { code: 'COURSE_CAPACITY_BELOW_ENROLLMENT' });
+    await connection.execute(
+      'UPDATE courses SET name = ?, code = ?, credits = ?, lecturer = ?, capacity = ?, faculty = ?, description = ? WHERE id = ?',
+      [course.name, course.code, course.credits, course.lecturer, course.capacity, course.faculty, course.description, id]
+    );
+    await connection.commit();
+    return await findCourse(id);
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteCourse(id) {
+  if (!database) {
+    const db = localStore.database;
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const course = db.prepare('SELECT id FROM courses WHERE id = ?').get(id);
+      if (!course) throw Object.assign(new Error('COURSE_NOT_FOUND'), { code: 'COURSE_NOT_FOUND' });
+      const { total } = db.prepare('SELECT COUNT(*) AS total FROM course_registrations WHERE course_id = ?').get(id);
+      if (total > 0) throw Object.assign(new Error('COURSE_HAS_REGISTRATIONS'), { code: 'COURSE_HAS_REGISTRATIONS' });
+      db.prepare('DELETE FROM courses WHERE id = ?').run(id);
+      db.exec('COMMIT');
+      return true;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  const connection = await database.promise().getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[course]] = await connection.execute('SELECT id FROM courses WHERE id = ? FOR UPDATE', [id]);
+    if (!course) throw Object.assign(new Error('COURSE_NOT_FOUND'), { code: 'COURSE_NOT_FOUND' });
+    const [[{ total }]] = await connection.execute('SELECT COUNT(*) AS total FROM course_registrations WHERE course_id = ?', [id]);
+    if (total > 0) throw Object.assign(new Error('COURSE_HAS_REGISTRATIONS'), { code: 'COURSE_HAS_REGISTRATIONS' });
+    await connection.execute('DELETE FROM courses WHERE id = ?', [id]);
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function registerForCourse(userId, courseId) {
   if (!database) {
     const db = localStore.database;
@@ -39,6 +136,8 @@ async function registerForCourse(userId, courseId) {
       const user = db.prepare('SELECT student_id FROM auth_users WHERE id = ?').get(userId);
       const course = db.prepare('SELECT capacity FROM courses WHERE id = ?').get(courseId);
       if (!course) throw Object.assign(new Error('COURSE_NOT_FOUND'), { code: 'COURSE_NOT_FOUND' });
+      const existing = db.prepare('SELECT id FROM course_registrations WHERE student_id = ? AND course_id = ?').get(user.student_id, courseId);
+      if (existing) throw Object.assign(new Error('ALREADY_REGISTERED'), { code: 'ALREADY_REGISTERED' });
       const count = db.prepare('SELECT COUNT(*) AS total FROM course_registrations WHERE course_id = ?').get(courseId).total;
       if (count >= course.capacity) throw Object.assign(new Error('COURSE_FULL'), { code: 'COURSE_FULL' });
       db.prepare('INSERT INTO course_registrations (student_id, course_id) VALUES (?, ?)').run(user.student_id, courseId);
@@ -56,6 +155,11 @@ async function registerForCourse(userId, courseId) {
     const [[user]] = await connection.execute('SELECT student_id FROM auth_users WHERE id = ?', [userId]);
     const [[course]] = await connection.execute('SELECT capacity FROM courses WHERE id = ? FOR UPDATE', [courseId]);
     if (!course) throw Object.assign(new Error('COURSE_NOT_FOUND'), { code: 'COURSE_NOT_FOUND' });
+    const [[existing]] = await connection.execute(
+      'SELECT id FROM course_registrations WHERE student_id = ? AND course_id = ?',
+      [user.student_id, courseId]
+    );
+    if (existing) throw Object.assign(new Error('ALREADY_REGISTERED'), { code: 'ALREADY_REGISTERED' });
     const [[{ total }]] = await connection.execute('SELECT COUNT(*) AS total FROM course_registrations WHERE course_id = ?', [courseId]);
     if (total >= course.capacity) throw Object.assign(new Error('COURSE_FULL'), { code: 'COURSE_FULL' });
     await connection.execute('INSERT INTO course_registrations (student_id, course_id) VALUES (?, ?)', [user.student_id, courseId]);
@@ -88,4 +192,4 @@ function unregisterFromCourse(userId, courseId) {
   ).then(([result]) => result.affectedRows);
 }
 
-module.exports = { listCourses, findCourse, registerForCourse, listRegistrations, unregisterFromCourse };
+module.exports = { listCourses, findCourse, createCourse, updateCourse, deleteCourse, registerForCourse, listRegistrations, unregisterFromCourse };

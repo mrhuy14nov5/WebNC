@@ -37,13 +37,15 @@ Trong cửa sổ terminal khác, chạy giao diện bằng `npm run dev`. Vite c
 
 Tạo quản trị viên ban đầu bằng cách đặt `ADMIN_EMAIL` và `ADMIN_PASSWORD` (tối thiểu 12 ký tự) trong `.env` trước lần khởi động. Tài khoản có email đó được cấp role `admin`; không có mật khẩu quản trị mặc định. Giữ bí mật thông tin này và đổi mật khẩu sau khi triển khai.
 
-- Đăng ký tạo tài khoản sinh viên và hồ sơ trong MySQL.
-- Đăng nhập sử dụng cookie phiên `httpOnly`; mật khẩu được băm bằng `scrypt`, không lưu dạng rõ.
+- Đăng ký tạo tài khoản sinh viên và hồ sơ trong SQLite mặc định hoặc MySQL khi được cấu hình.
+- Đăng nhập dùng JWT HS256 trong cookie `httpOnly`; session được lưu hash ở DB để có thể thu hồi. Mật khẩu băm bằng bcrypt cost 12; mật khẩu scrypt cũ được nâng cấp sau lần đăng nhập hợp lệ.
 - `/dashboard` hiển thị hồ sơ, vai trò và học phần đã đăng ký; `/admin/students` chỉ dành cho quản trị viên.
 - API xác thực: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`.
 - API quản lý sinh viên `/api/students` hỗ trợ cả SQLite và MySQL, yêu cầu role quản trị viên.
 - API học phần `GET /api/courses`, `GET /api/courses/:id`, `GET /api/courses/mine`, `POST /api/courses/:id/register` và `DELETE /api/courses/:id/register` lưu dữ liệu trong cơ sở dữ liệu và kiểm tra số chỗ.
 - API xác thực có CSRF double-submit token, giới hạn tốc độ đăng nhập/đăng ký, cookie phiên httpOnly, và job dọn session hết hạn mỗi giờ.
+- Cấu hình `SESSION_SECRET` tối thiểu 32 ký tự và `CORS_ORIGINS` allowlist trước khi triển khai. Không dùng wildcard CORS với credentials.
+- CRUD học phần dành riêng cho admin: `POST/PUT/DELETE /api/courses` và `/api/courses/:id`.
 
 ## Cấu trúc giao diện
 
@@ -52,6 +54,8 @@ Tạo quản trị viên ban đầu bằng cách đặt `ADMIN_EMAIL` và `ADMIN
 - `react-node-app/src/data/mockData.js`: nội dung mẫu.
 - `react-node-app/src/services/api.js`: Axios instance dùng chung.
 - `react-node-app/src/styles/`: biến màu và CSS responsive.
+- `react-node-app/test/api.test.cjs`: 19 unit/integration tests cho user stories, API và bảo mật.
+- `react-node-app/PROJECT_REPORT.md`: báo cáo đồ án, UML, luồng nghiệp vụ, API, SQL và checklist kiểm thử.
 
 Tài khoản tự đăng ký hiện chỉ có vai trò sinh viên. Tài khoản giảng viên/quản trị viên cần được cấp và phân quyền riêng; không cho phép người dùng tự chọn quyền quản trị khi đăng ký.
 
