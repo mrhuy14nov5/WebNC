@@ -1,0 +1,7 @@
+node_modules/
+react-node-app/dist/
+react-node-app/.vite/
+.env
+.data/
+backend/dist/
+npm-debug.log*

@@ -1,0 +1,49 @@
+{
+  "name": "webnc",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UniManage learning management app with NestJS, TypeORM, React, MySQL and SQLite support",
+  "main": "server.js",
+  "scripts": {
+    "start": "npm run build && node --env-file-if-exists=.env server.js",
+    "start:server": "npm run build:server && node --env-file-if-exists=.env server.js",
+    "dev": "vite --host 0.0.0.0",
+    "dev:server": "npm run build:server && node --env-file-if-exists=.env server.js",
+    "client": "npm run dev",
+    "build": "vite build && npm run build:server",
+    "build:server": "tsc -p backend/tsconfig.json",
+    "test": "npm run build:server && node --test react-node-app/test/*.test.cjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.2.8",
+    "@nestjs/core": "^11.2.8",
+    "@nestjs/platform-express": "^11.2.8",
+    "@nestjs/swagger": "^11.4.7",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "axios": "^1.8.4",
+    "bcryptjs": "^3.0.3",
+    "bootstrap": "^5.3.8",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.24.4",
+    "react": "^18.3.1",
+    "react-bootstrap": "^2.10.10",
+    "react-bootstrap-icons": "^1.11.6",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.4",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "sql.js": "^1.15.2",
+    "typeorm": "^0.3.31",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.3"
+  }
+}
