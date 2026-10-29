@@ -1,0 +1,28 @@
+const mysql = require('mysql2');
+
+const requiredVariables = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
+const missingVariables = requiredVariables.filter((name) => !process.env[name]);
+const configuredVariables = requiredVariables.filter((name) => process.env[name]);
+
+if (configuredVariables.length > 0 && missingVariables.length > 0) {
+  throw new Error(`Incomplete MySQL configuration. Missing environment variables: ${missingVariables.join(', ')}`);
+}
+
+const ssl = process.env.DB_SSL === 'true'
+  ? {
+      rejectUnauthorized: true,
+      ...(process.env.DB_SSL_CA ? { ca: process.env.DB_SSL_CA.replace(/\\n/g, '\n') } : {}),
+    }
+  : undefined;
+
+const database = configuredVariables.length === 0 ? null : mysql.createPool({
+  connectionLimit: 5,
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  ssl,
+});
+
+module.exports = database;
